@@ -26,17 +26,18 @@ public class MainActivity extends Activity
 {
 
     private TextView tv_type,tv_now_speed,tv_ave_speed;
+    private TextView totalRxBytes, totalTxBytes,mobileRxBytes,mobileTxBytes;
     private Button btn;
     private ImageView needle;
     private boolean flag;
     private int last_degree = 0, cur_degree;
 
-    private long lastTotalRxBytes = 0;
+    private double lastTotalRxBytes;
     private long lastTimeStamp = 0;
     // 应用启动时间
     private long startTimeStamp ;
     // 应用启动时的总流量
-    private long startTotalRxTxBytes;
+    private double startTotalRxTxBytes;
     // 开始结束标识
     private boolean isStart = true;
 
@@ -55,18 +56,13 @@ public class MainActivity extends Activity
                 tv_now_speed.setText(arg1 + "MB/s");
                 tv_ave_speed.setText(arg2 + "MB/s");
 
-                //仪表盘参数
-                String pointVal = arg1;
-                if (pointVal.equals(""))
-                {
-                    pointVal = "0";
-                }
-                pointVal = float2StrRound(Float.parseFloat(arg1), 0);
-                int intPointVal = (int)Float.parseFloat(pointVal);
-                // For test
-                //intPointVal = 1024;
+                totalRxBytes.setText(Long.toString(TrafficStats.getTotalRxBytes()));
+                totalTxBytes.setText(Long.toString(TrafficStats.getTotalTxBytes()));
+                mobileRxBytes.setText(Long.toString(TrafficStats.getMobileRxBytes()));
+                mobileTxBytes.setText(Long.toString(TrafficStats.getMobileTxBytes()));
+
                 // 仪表盘
-                startAnimation(intPointVal);
+                startAnimation(Double.parseDouble(arg1));
             }
             else if(msg.what==0x100) // 结束统计
             {
@@ -94,6 +90,11 @@ public class MainActivity extends Activity
         btn = (Button) findViewById(R.id.start_btn);
         isStart = true;
 
+        totalRxBytes = findViewById(R.id.totalRxBytes);
+        totalTxBytes = findViewById(R.id.totalTxBytes);
+        mobileRxBytes = findViewById(R.id.mobileRxBytes);
+        mobileTxBytes = findViewById(R.id.mobileTxBytes);
+
         // 开始按钮点击事件
         btn.setOnClickListener(new View.OnClickListener()
         {
@@ -106,7 +107,12 @@ public class MainActivity extends Activity
                     isStart = false;
                     flag = true;
                     startTimeStamp = System.currentTimeMillis();
-                    startTotalRxTxBytes = (getMobileTxBytes() + getMobileRxBytes()) / 1024;
+                    lastTimeStamp = System.currentTimeMillis();
+                    startTotalRxTxBytes = AppUtils.div((getMobileTxBytes() + getMobileRxBytes()),1024,2); // MB
+                    //startTotalRxTxBytes = AppUtils.div((getTotalRxBytes() + getTotalTxBytes()),1024,2); // MB
+                    lastTotalRxBytes = startTotalRxTxBytes;
+                    // For Test
+                    //startTotalRxTxBytes = Double.parseDouble("1");
 
                     // 获取连接方式
                     //ConnectivityManager connectivityManager=(ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
@@ -137,9 +143,11 @@ public class MainActivity extends Activity
         return TrafficStats.getTotalTxBytes()==TrafficStats.UNSUPPORTED?0:(TrafficStats.getTotalTxBytes()/1024);
     }
     public long getMobileRxBytes(){  //获取通过Mobile连接收到的字节总数，不包含WiFi
+        //return 1024*10*10;
         return TrafficStats.getMobileRxBytes() == TrafficStats.UNSUPPORTED ? 0 : (TrafficStats.getMobileRxBytes()/1024);
     }
     public long getMobileTxBytes(){  //获取通过Mobile连接发送的字节总数，不包含WiFi
+        //return 500;
         return TrafficStats.getMobileTxBytes() == TrafficStats.UNSUPPORTED ? 0 : (TrafficStats.getMobileTxBytes()/1024);
     }
 
@@ -158,28 +166,23 @@ public class MainActivity extends Activity
                 {
                     Thread.sleep(1000);
 
-                    // 当前接收和发送的总流量
-                    long nowTotalRxBytes = (getMobileRxBytes() + getMobileTxBytes()) / 1024; //MB
+                    // 当前接收和发送的总流量 单位：MB
+                    double nowTotalRxBytes = AppUtils.div((getMobileRxBytes() + getMobileTxBytes()), 1024, 2);
+                    //double nowTotalRxBytes = AppUtils.div((getTotalRxBytes() + getTotalTxBytes()), 1024, 2);
                     long nowTimeStamp = System.currentTimeMillis();
-                    long speed1 = ((nowTotalRxBytes - lastTotalRxBytes) * 1000 / (nowTimeStamp - lastTimeStamp));//毫秒转换
-                    long speed2 = ((nowTotalRxBytes - lastTotalRxBytes) * 1000 % (nowTimeStamp - lastTimeStamp));//毫秒转换
+                    double tmp1 = AppUtils.sub(nowTotalRxBytes, lastTotalRxBytes);
+                    double tmp2 = AppUtils.mul(tmp1, 1000);//毫秒转换
+                    double curSpeed = AppUtils.div(tmp2, (nowTimeStamp - lastTimeStamp), 2);
 
-                    //For Test
-                    //speed1 = 1024*3;
-
-                    // 平均速度
-                    long avgSpeed1 = (nowTotalRxBytes - startTotalRxTxBytes) * 1000 / (nowTimeStamp - startTimeStamp);
-                    long avgSpeed2 = (nowTotalRxBytes - startTotalRxTxBytes) * 1000 % (nowTimeStamp - startTimeStamp);
+                    // 平均速度 MB
+                    tmp1 = AppUtils.sub(nowTotalRxBytes, startTotalRxTxBytes);
+                    tmp2 = AppUtils.mul(tmp1, 1000);//毫秒转换
+                    double avgSpeed = AppUtils.div(tmp2, (nowTimeStamp - startTimeStamp), 2);
 
                     lastTimeStamp = nowTimeStamp;
                     lastTotalRxBytes = nowTotalRxBytes;
                     // 格式化速度值
-                    String curSpeed = String.valueOf(speed1) + "." + String.valueOf(speed2);
-                    curSpeed = float2StrRound(Float.parseFloat(curSpeed),2);
-                    String avgSpeed = String.valueOf(avgSpeed1) + "." + String.valueOf(avgSpeed2);
-                    avgSpeed = float2StrRound(Float.parseFloat(avgSpeed), 2);
-
-                    String parVal = curSpeed + ";" + avgSpeed;
+                    String parVal = Double.toString(curSpeed) + ";" + Double.toString(avgSpeed);
                     if (isStart == true) // 因为此方法中有sleep延时，点击过结束按钮数据要清零
                     {
                         parVal = "0;0";
@@ -222,7 +225,7 @@ public class MainActivity extends Activity
         super.onResume();
     }
 
-    private void startAnimation(int cur_speed)
+    private void startAnimation(double cur_speed)
     {
         //cur_degree = getDegree(cur_speed);
         cur_degree = getDegreeMB(cur_speed);
@@ -269,45 +272,6 @@ public class MainActivity extends Activity
             ret = 180;
         }
         return ret;
-    }
-
-    /**
-     * 将字符串格式的数据转换为BigDecimal数据类型，如果参数为""或null转换为0
-     * @param strVal
-     * @return
-     */
-    public static BigDecimal string2BigDecimal(String strVal)
-    {
-        String valTmp = strVal;
-        if ("".equals(valTmp) || null == strVal)
-        {
-            valTmp = "0";
-        }
-
-        return  new BigDecimal(valTmp);
-    }
-
-    /**
-     * 格式化小数点
-     * @param val
-     * @param round
-     * @return
-     */
-    public static BigDecimal bigDecimalRound(BigDecimal val , int round)
-    {
-        BigDecimal rs = val;
-        rs = rs.divide(new BigDecimal(1), BigDecimal.ROUND_UP, round);
-
-        return rs;
-    }
-
-    public static String float2StrRound(float val , int round)
-    {
-
-        BigDecimal rs = new BigDecimal(val);
-        float f = rs.setScale(round, BigDecimal.ROUND_HALF_UP).floatValue();
-
-        return String.valueOf(f);
     }
 
 }
